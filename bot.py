@@ -1,11 +1,10 @@
 import os
 import requests
 import random
+import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
-import asyncio
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from aiohttp import web
 
 TOKEN = os.getenv("BLACKBOX_BOT_TOKEN")
 API_KEY = os.getenv("BLACKBOX_API_KEY")
@@ -13,24 +12,9 @@ API_KEY = os.getenv("BLACKBOX_API_KEY")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Легкий HTTP-сервер для проходження перевірки портів на Render
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-    def log_message(self, format, *args):
-        return
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
 @dp.message()
 async def check_number(message: Message):
     phone = message.text.strip()
-    
     request_data = {
         "id": random.randint(1000, 9999),
         "params": {
@@ -55,12 +39,21 @@ async def check_number(message: Message):
     except Exception as e:
         await message.answer(f"Помилка з'єднання з сервером: {e}")
 
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
-    # Запускаємо вебсервер у фоновому потоці
-    server_thread = threading.Thread(target=run_web_server, daemon=True)
-    server_thread.start()
-    
-    # Запускаємо бота
+    # Запускаємо асинхронний вебсервер і опитування паралельно
+    await web_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
