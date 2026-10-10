@@ -28,13 +28,15 @@ dp = Dispatcher()
 
 
 def normalize_phone(raw: str):
-    """Залишає лише цифри і приводить до формату 380XXXXXXXXX. Повертає None, якщо номер не схожий на український."""
+    """Залишає лише цифри і приводить до формату 0XXXXXXXXX, як вимагає API BlackBox. Повертає None, якщо номер не схожий на український."""
     digits = re.sub(r"\D", "", raw or "")
-    if len(digits) == 10 and digits.startswith("0"):
-        digits = "38" + digits
-    elif len(digits) == 11 and digits.startswith("80"):
-        digits = "3" + digits
     if len(digits) == 12 and digits.startswith("380"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("80"):
+        digits = digits[1:]
+    elif len(digits) == 9:
+        digits = "0" + digits
+    if len(digits) == 10 and digits.startswith("0"):
         return digits
     return None
 
@@ -97,10 +99,12 @@ async def check_number(message: Message):
 
     if result.get("success"):
         data = result.get("data")
+        left = result.get("count_query")
+        footer = f"\n\nЗапитів залишилось: {left}" if left is not None else ""
         if data:
-            await message.answer(f"⚠️ Номер {phone} знайдено в базі:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+            await message.answer(f"⚠️ Номер {phone} знайдено в базі:\n{json.dumps(data, ensure_ascii=False, indent=2)}{footer}")
         else:
-            await message.answer(f"✅ Номер {phone} у базі не знайдено.")
+            await message.answer(f"✅ Номер {phone} у базі не знайдено.{footer}")
     else:
         err = result.get("error") or {}
         await message.answer(f"Помилка API: {err.get('message', 'невідома помилка')} (код {err.get('code', '-')})")
