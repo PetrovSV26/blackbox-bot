@@ -1,3 +1,5 @@
+logging.basicConfig(level=logging.INFO)
+import logging
 import os
 import requests
 import random
