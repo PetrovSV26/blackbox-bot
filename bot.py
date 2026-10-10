@@ -3,8 +3,8 @@ import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
 import asyncio
-import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 TOKEN = os.getenv("BLACKBOX_BOT_TOKEN")
 API_KEY = os.getenv("BLACKBOX_API_KEY")
@@ -12,22 +12,17 @@ API_KEY = os.getenv("BLACKBOX_API_KEY")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Простий веб-сервер для того, щоб Render бачив відкритий порт
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot is running!")
-
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
+    def log_message(self, format, *args):
+        return
 
 @dp.message()
 async def check_number(message: Message):
     phone = message.text.strip()
-    
     request_data = {
         "id": 1000,
         "params": {
@@ -37,7 +32,7 @@ async def check_number(message: Message):
     }
     
     try:
-        response = requests.get(f"https://blackbox.net.ua/api", params={"data": str(request_data).replace("'", '"')})
+        response = requests.get("https://blackbox.net.ua/api", params={"data": str(request_data).replace("'", '"')})
         res_json = response.json()
         
         if res_json.get("success"):
@@ -52,12 +47,17 @@ async def check_number(message: Message):
     except Exception as e:
         await message.answer(f"Помилка з'єднання з сервером: {e}")
 
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+
 async def main():
-    # Запускаємо веб-сервер у фоновому потоці
-    server_thread = threading.Thread(target=run_server, daemon=True)
+    # Запускаємо веб-сервер у фоновому потоці для Render
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
     
-    # Запускаємо бота
+    # Запускаємо опитування Telegram
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
