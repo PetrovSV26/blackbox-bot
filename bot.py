@@ -1,5 +1,6 @@
 import os
 import requests
+import random
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 import asyncio
@@ -14,8 +15,10 @@ dp = Dispatcher()
 @dp.message()
 async def check_number(message: Message):
     phone = message.text.strip()
+    
+    # Формуємо запит за документацією API v1.0
     request_data = {
-        "id": 1000,
+        "id": random.randint(1000, 9999),
         "params": {
             "phonenumber": phone,
             "api_key": API_KEY
@@ -38,7 +41,6 @@ async def check_number(message: Message):
     except Exception as e:
         await message.answer(f"Помилка з'єднання з сервером: {e}")
 
-# Простий веб-сервер для того, щоб Render задовольнити вимоги порта
 async def handle_ping(request):
     return web.Response(text="Bot is running!")
 
@@ -52,7 +54,6 @@ async def web_server():
     await site.start()
 
 async def main():
-    # Запускаємо і веб-сервер, і бота паралельно
     await web_server()
     await dp.start_polling(bot)
 
