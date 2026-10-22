@@ -23,6 +23,13 @@ if not TOKEN:
 if not API_KEY:
     log.warning("Не задано змінну BLACKBOX_API_KEY, запити до API не працюватимуть")
 
+# Telegram ID користувачів, яким дозволено перевіряти номери (через кому), напр. "123456789,987654321"
+ALLOWED_USERS = {
+    int(x) for x in re.split(r"[,\s]+", os.getenv("ALLOWED_USERS", "")) if x.strip().isdigit()
+}
+if not ALLOWED_USERS:
+    log.warning("ALLOWED_USERS порожній: бот нікому не відповідатиме, крім команди /id")
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -61,8 +68,26 @@ async def query_blackbox(phone: str) -> dict:
                 return {"success": False, "error": {"message": f"Некоректна відповідь API (HTTP {resp.status})"}}
 
 
+def is_allowed(message: Message) -> bool:
+    return bool(message.from_user and message.from_user.id in ALLOWED_USERS)
+
+
+async def deny(message: Message):
+    uid = message.from_user.id if message.from_user else "?"
+    await message.answer(f"⛔ Немає доступу. Ваш Telegram ID: {uid}. Передайте його власнику бота.")
+
+
+@dp.message(Command("id"))
+async def cmd_id(message: Message):
+    uid = message.from_user.id if message.from_user else "?"
+    await message.answer(f"Ваш Telegram ID: {uid}")
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
+    if not is_allowed(message):
+        await deny(message)
+        return
     await message.answer(
         "Привіт! Надішліть номер телефону покупця, наприклад 0671234567, "
         "і я перевірю його в базі BlackBox."
@@ -76,6 +101,10 @@ async def cmd_help(message: Message):
 
 @dp.message()
 async def check_number(message: Message):
+    if not is_allowed(message):
+        await deny(message)
+        return
+
     if not message.text:
         await message.answer("Надішліть номер телефону текстом.")
         return
@@ -125,8 +154,27 @@ async def start_web_server():
     log.info("Вебсервер слухає порт %s", port)
 
 
+async def keep_alive():
+    """Раз на 10 хвилин звертається до власної публічної адреси, щоб Render не присипляв сервіс.
+    RENDER_EXTERNAL_URL Render виставляє сам. Якщо сервіс уже заснув, його розбудить зовнішній пінг (UptimeRobot)."""
+    url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("KEEPALIVE_URL")
+    if not url:
+        log.info("RENDER_EXTERNAL_URL не задано, самопінг вимкнено")
+        return
+    timeout = aiohttp.ClientTimeout(total=30)
+    while True:
+        await asyncio.sleep(600)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    log.info("keep-alive: %s", resp.status)
+        except Exception as e:
+            log.warning("keep-alive помилка: %s", e)
+
+
 async def main():
     await start_web_server()
+    asyncio.create_task(keep_alive())
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
